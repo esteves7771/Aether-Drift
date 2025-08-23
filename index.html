@@ -154,6 +154,14 @@
             text-shadow: 0 0 8px var(--accent-color);
             margin-top: 0.5rem;
         }
+        #fullscreen-btn {
+            background: #252441;
+            color: #ccc;
+        }
+        #gyro-btn {
+            background: #252441;
+            color: #ccc;
+        }
 
         #music-btn, #sfx-btn {
             background: linear-gradient(45deg, var(--accent-color), #a842e6);
@@ -193,10 +201,12 @@
                 <button id="settings-btn" class="btn">Settings</button>
             </div>
         </div>
-
+        
         <div id="settings-screen" class="ui-screen">
             <h1>Settings</h1>
             <div class="btn-container">
+                <button id="fullscreen-btn" class="btn">Enable Fullscreen</button>
+                <button id="gyro-btn" class="btn">Enable Gyroscope</button>
                 <button id="music-btn" class="btn">Music: On</button>
                 <button id="sfx-btn" class="btn">SFX: On</button>
                 <button id="back-btn" class="btn">Back</button>
@@ -209,6 +219,7 @@
             <ul>
                 <li>Tap and drag horizontally to move your ship left and right.</li>
                 <li>Use the Left and Right arrow keys on your keyboard.</li>
+                <li><strong>Tilt your device to steer (if enabled in settings).</strong></li>
             </ul>
             <p><strong>Game Objective:</strong></p>
             <ul>
@@ -341,6 +352,8 @@
         const musicBtn = document.getElementById('music-btn');
         const sfxBtn = document.getElementById('sfx-btn');
         const highScoreDisplay = document.getElementById('high-score-display');
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        const gyroBtn = document.getElementById('gyro-btn');
 
         let gameRunning = false;
         let score = 0;
@@ -377,9 +390,12 @@
 
         // High score
         let highScore = 0;
-
-        // Event listeners
-        document.getElementById('start-btn').addEventListener('click', startGame);
+        
+        // --- Event Listeners for UI ---
+        document.getElementById('start-btn').addEventListener('click', () => {
+            requestFullScreen();
+            startGame();
+        });
         document.getElementById('play-again-btn').addEventListener('click', startGame);
         document.getElementById('how-to-play-btn').addEventListener('click', () => showScreen(screens.howToPlay));
         document.getElementById('settings-btn').addEventListener('click', () => showScreen(screens.settings));
@@ -405,6 +421,25 @@
             sfxBtn.textContent = `SFX: ${sfxEnabled ? 'On' : 'Off'}`;
         });
         
+        // Enable Fullscreen and Gyroscope from a user-initiated button press
+        fullscreenBtn.addEventListener('click', requestFullScreen);
+        gyroBtn.addEventListener('click', () => {
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission().then(permissionState => {
+                    if (permissionState === 'granted') {
+                        hasGyro = true;
+                        gyroBtn.textContent = "Gyroscope: On";
+                    } else {
+                        gyroBtn.textContent = "Gyroscope: Blocked";
+                    }
+                }).catch(console.error);
+            } else {
+                // Handle for browsers that don't need permission dialog
+                hasGyro = true;
+                gyroBtn.textContent = "Gyroscope: On";
+            }
+        });
+
         // Keyboard event listeners
         window.addEventListener('keydown', (e) => {
             if (gameRunning) {
@@ -447,12 +482,10 @@
         
         // Gyroscope controls
         window.addEventListener('deviceorientation', (e) => {
-            if (e.gamma !== null) {
-                hasGyro = true;
+            if (hasGyro && e.gamma !== null) {
                 gyroMovement = e.gamma / 30; // Scale the tilt value
             }
         });
-
 
         // Screen management function with transitions
         function showScreen(screenToShow) {
@@ -527,13 +560,6 @@
             loadHighScore();
             showScreen(screens.mainMenu);
             
-            // Request full screen on mobile devices
-            if (/Mobi|Android/i.test(navigator.userAgent)) {
-                requestFullScreen();
-                window.screen.orientation.lock('landscape');
-            }
-
-
             // Responsive canvas sizing
             function resizeCanvas() {
                 canvas.width = window.innerWidth;
@@ -614,6 +640,26 @@
             finalScoreDisplay.textContent = Math.floor(score);
             gameOverHighScoreDisplay.textContent = `High Score: ${highScore}`;
             showScreen(screens.gameOver);
+            
+            // Re-create stars and parallax stars
+            stars = [];
+            for (let i = 0; i < 200; i++) {
+                stars.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    size: Math.random() * 2 + 0.5,
+                    opacity: Math.random() * 0.8 + 0.2
+                });
+            }
+            parallaxStars = [];
+            for (let i = 0; i < 100; i++) {
+                parallaxStars.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    size: Math.random() * 1.5 + 0.3,
+                    opacity: Math.random() * 0.5 + 0.1
+                });
+            }
         }
 
         function gameLoop(timestamp) {
