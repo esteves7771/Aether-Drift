@@ -205,8 +205,6 @@
         <div id="settings-screen" class="ui-screen">
             <h1>Settings</h1>
             <div class="btn-container">
-                <button id="fullscreen-btn" class="btn">Enable Fullscreen</button>
-                <button id="gyro-btn" class="btn">Enable Gyroscope</button>
                 <button id="music-btn" class="btn">Music: On</button>
                 <button id="sfx-btn" class="btn">SFX: On</button>
                 <button id="back-btn" class="btn">Back</button>
@@ -394,7 +392,9 @@
         // --- Event Listeners for UI ---
         document.getElementById('start-btn').addEventListener('click', () => {
             requestFullScreen();
-            startGame();
+            requestGyroscopePermission().then(() => {
+                startGame();
+            });
         });
         document.getElementById('play-again-btn').addEventListener('click', startGame);
         document.getElementById('how-to-play-btn').addEventListener('click', () => showScreen(screens.howToPlay));
@@ -421,24 +421,43 @@
             sfxBtn.textContent = `SFX: ${sfxEnabled ? 'On' : 'Off'}`;
         });
         
-        // Enable Fullscreen and Gyroscope from a user-initiated button press
-        fullscreenBtn.addEventListener('click', requestFullScreen);
-        gyroBtn.addEventListener('click', () => {
-            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-                DeviceOrientationEvent.requestPermission().then(permissionState => {
-                    if (permissionState === 'granted') {
-                        hasGyro = true;
-                        gyroBtn.textContent = "Gyroscope: On";
-                    } else {
-                        gyroBtn.textContent = "Gyroscope: Blocked";
-                    }
-                }).catch(console.error);
-            } else {
-                // Handle for browsers that don't need permission dialog
-                hasGyro = true;
-                gyroBtn.textContent = "Gyroscope: On";
+        function requestGyroscopePermission() {
+             return new Promise((resolve, reject) => {
+                if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    DeviceOrientationEvent.requestPermission().then(permissionState => {
+                        if (permissionState === 'granted') {
+                            hasGyro = true;
+                            gyroBtn.textContent = "Gyroscope: On";
+                            resolve();
+                        } else {
+                            hasGyro = false;
+                            gyroBtn.textContent = "Gyroscope: Blocked";
+                            resolve(); // Resolve anyway so game can start
+                        }
+                    }).catch(err => {
+                        console.error('Error requesting gyroscope permission:', err);
+                        resolve(); // Resolve anyway to not block the game
+                    });
+                } else {
+                    // For browsers that don't need a permission dialog
+                    hasGyro = true;
+                    resolve();
+                }
+            });
+        }
+        
+        function requestFullScreen() {
+            const element = document.documentElement;
+            if (element.requestFullscreen) {
+                element.requestFullscreen();
+            } else if (element.mozRequestFullScreen) { // Firefox
+                element.mozRequestFullScreen();
+            } else if (element.webkitRequestFullscreen) { // Chrome, Safari and Opera
+                element.webkitRequestFullscreen();
+            } else if (element.msRequestFullscreen) { // IE/Edge
+                element.msRequestFullscreen();
             }
-        });
+        }
 
         // Keyboard event listeners
         window.addEventListener('keydown', (e) => {
@@ -606,7 +625,7 @@
         }
 
         function startGame() {
-            // Reset game state
+             // Reset game state
             gameRunning = true;
             score = 0;
             gameSpeed = 100;
