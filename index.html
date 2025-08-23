@@ -371,6 +371,9 @@
         const playerColor = '#42e6a9';
         let keyboardMovement = 0; // -1 for left, 1 for right, 0 for none
         let isFiring = false;
+        let isDragging = false;
+        let gyroMovement = 0;
+        let hasGyro = false;
 
         // High score
         let highScore = 0;
@@ -441,6 +444,15 @@
         canvas.addEventListener('touchend', () => {
             isFiring = false;
         });
+        
+        // Gyroscope controls
+        window.addEventListener('deviceorientation', (e) => {
+            if (e.gamma !== null) {
+                hasGyro = true;
+                gyroMovement = e.gamma / 30; // Scale the tilt value
+            }
+        });
+
 
         // Screen management function with transitions
         function showScreen(screenToShow) {
@@ -569,7 +581,7 @@
             magnetTimer = 0;
             
             showScreen(screens.game);
-            scoreDisplay.textContent = `Score: 0`;
+            scoreDisplay.textContent = `Score: ${score}`;
             
             // Start the music
             playMusic();
@@ -618,12 +630,16 @@
                 lastFireTime = performance.now();
             }
             
-            // Update player position based on keyboard input
-            if (keyboardMovement !== 0) {
+            // Update player position based on keyboard input, touch, or gyroscope
+            if (hasGyro) {
+                player.x += gyroMovement * 5;
+            } else if (keyboardMovement !== 0) {
                 player.x += keyboardMovement * 5; // Adjust movement speed as needed
-                // Clamp player position to stay within canvas bounds
-                player.x = Math.max(playerSize * 2, Math.min(canvas.width - playerSize * 2, player.x));
+            } else if (isDragging) {
+                // Mouse/touch dragging is handled by event listeners directly
             }
+            // Clamp player position to stay within canvas bounds
+            player.x = Math.max(playerSize * 2, Math.min(canvas.width - playerSize * 2, player.x));
             
             // Update power-up timers
             if (shieldActive) {
