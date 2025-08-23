@@ -220,6 +220,7 @@
         <div id="settings-screen" class="ui-screen">
             <h1>Settings</h1>
             <div class="btn-container">
+                <button id="fullscreen-btn" class="btn">Enable Fullscreen</button>
                 <button id="music-btn" class="btn">Music: On</button>
                 <button id="sfx-btn" class="btn">SFX: On</button>
                 <button id="back-btn" class="btn">Back</button>
@@ -421,6 +422,7 @@
         // --- Event Listeners for UI ---
         document.getElementById('start-btn').addEventListener('click', () => {
             if (isMobile) {
+                // On mobile, tap to go fullscreen and start game
                 requestFullScreen();
             }
             startGame();
@@ -434,7 +436,7 @@
             stopMusic();
             showScreen(screens.mainMenu);
         });
-
+        
         // Toggle music and SFX
         musicBtn.addEventListener('click', () => {
             musicEnabled = !musicEnabled;
@@ -448,6 +450,11 @@
         sfxBtn.addEventListener('click', () => {
             sfxEnabled = !sfxEnabled;
             sfxBtn.textContent = `SFX: ${sfxEnabled ? 'On' : 'Off'}`;
+        });
+        
+        // Fullscreen button inside settings
+        document.getElementById('fullscreen-btn').addEventListener('click', () => {
+            requestFullScreen();
         });
         
         function requestFullScreen() {
@@ -465,7 +472,6 @@
         
         document.addEventListener('fullscreenchange', (event) => {
             if (document.fullscreenElement) {
-                // In full screen mode
                 if (window.innerWidth > window.innerHeight) {
                     canvas.width = window.innerWidth;
                     canvas.height = window.innerHeight;
@@ -474,7 +480,6 @@
                     canvas.height = window.innerWidth;
                 }
             } else {
-                // Exiting full screen
                 resizeCanvas();
             }
         });
@@ -503,8 +508,8 @@
                 }
             }
         });
-
-        // Mouse/touch event listeners for firing
+        
+        // Mouse/touch event listeners for firing and joystick
         canvas.addEventListener('mousedown', (e) => {
             if (!isMobile) {
                 isFiring = true;
@@ -515,46 +520,66 @@
                 isFiring = false;
             }
         });
-
-        // Joystick and touch-to-fire logic for mobile
+        
+        // Joystick and multi-touch firing for mobile
         canvas.addEventListener('touchstart', (e) => {
             e.preventDefault();
-            const touch = e.touches[0];
-            const touchX = touch.clientX;
-            const touchY = touch.clientY;
+            const touches = e.touches;
 
-            // Check if touch is within joystick area (left side of screen)
-            if (isMobile && touchX < canvas.width / 2) {
-                joystick.active = true;
-                joystick.baseX = touchX;
-                joystick.baseY = touchY;
-                joystick.knobX = touchX;
-                joystick.knobY = touchY;
-            } else {
-                isFiring = true;
+            for (let i = 0; i < touches.length; i++) {
+                const touch = touches[i];
+                const touchX = touch.clientX;
+
+                if (isMobile && touchX < canvas.width / 2) {
+                    // Joystick control
+                    joystick.active = true;
+                    joystick.baseX = touchX;
+                    joystick.baseY = touch.clientY;
+                    joystick.knobX = touchX;
+                    joystick.knobY = touch.clientY;
+                    joystick.touchId = touch.identifier;
+                } else {
+                    // Fire control
+                    isFiring = true;
+                }
             }
-        });
+        }, { passive: false });
 
         canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
             if (joystick.active) {
-                const touch = e.touches[0];
-                const deltaX = touch.clientX - joystick.baseX;
-                const distance = Math.min(Math.abs(deltaX), joystick.radius);
-                const angle = Math.atan2(touch.clientY - joystick.baseY, deltaX);
-                
-                joystick.knobX = joystick.baseX + Math.cos(angle) * distance;
-                joystick.knobY = joystick.baseY + Math.sin(angle) * distance;
-                
-                joystick.movementX = (joystick.knobX - joystick.baseX) / joystick.radius;
+                const touches = e.changedTouches;
+                for (let i = 0; i < touches.length; i++) {
+                    const touch = touches[i];
+                    if (touch.identifier === joystick.touchId) {
+                        const deltaX = touch.clientX - joystick.baseX;
+                        const distance = Math.min(Math.abs(deltaX), joystick.radius);
+                        const angle = Math.atan2(touch.clientY - joystick.baseY, deltaX);
+                        
+                        joystick.knobX = joystick.baseX + Math.cos(angle) * distance;
+                        joystick.knobY = joystick.baseY + Math.sin(angle) * distance;
+                        
+                        joystick.movementX = (joystick.knobX - joystick.baseX) / joystick.radius;
+                    }
+                }
             }
-        });
+        }, { passive: false });
 
-        canvas.addEventListener('touchend', () => {
-            joystick.active = false;
-            joystick.movementX = 0;
-            isFiring = false;
-        });
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            const touches = e.changedTouches;
+            for (let i = 0; i < touches.length; i++) {
+                const touch = touches[i];
+                if (touch.identifier === joystick.touchId) {
+                    joystick.active = false;
+                    joystick.movementX = 0;
+                    joystick.touchId = -1;
+                } else {
+                    isFiring = false;
+                }
+            }
+        }, { passive: false });
+        
 
         // Screen management function with transitions
         function showScreen(screenToShow) {
@@ -867,6 +892,7 @@
         }
 
         function drawJoystick() {
+            if (!joystick.active) return;
             // Draw joystick base
             ctx.beginPath();
             ctx.arc(joystick.baseX, joystick.baseY, joystick.radius, 0, Math.PI * 2, true);
