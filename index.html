@@ -233,7 +233,6 @@
             <ul>
                 <li>Tap and drag horizontally to move your ship left and right.</li>
                 <li>Use the Left and Right arrow keys on your keyboard.</li>
-                <li><strong>Tilt your device to steer (if enabled in settings).</strong></li>
             </ul>
             <p><strong>Game Objective:</strong></p>
             <ul>
@@ -367,8 +366,7 @@
         const sfxBtn = document.getElementById('sfx-btn');
         const highScoreDisplay = document.getElementById('high-score-display');
         const fullscreenBtn = document.getElementById('fullscreen-btn');
-        const gyroBtn = document.getElementById('gyro-btn');
-
+        
         let gameRunning = false;
         let score = 0;
         let player, enemies, bullets, enemyBullets, powerups;
@@ -398,22 +396,23 @@
         const playerColor = '#42e6a9';
         let keyboardMovement = 0; // -1 for left, 1 for right, 0 for none
         let isFiring = false;
-        let isDragging = false;
-        let gyroMovement = 0;
-        let hasGyro = false;
         let isMobile = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-
-        // Joystick properties
-        let joystick = {
-            active: false,
-            baseX: 0,
-            baseY: 0,
-            knobX: 0,
-            knobY: 0,
-            radius: 50,
-            knobRadius: 25,
-            movementX: 0,
-            movementY: 0
+        let touchControls = {
+            joystick: {
+                active: false,
+                touchId: -1,
+                baseX: 0,
+                baseY: 0,
+                knobX: 0,
+                knobY: 0,
+                radius: 50,
+                knobRadius: 25,
+                movementX: 0
+            },
+            fire: {
+                active: false,
+                touchId: -1
+            }
         };
 
         // High score
@@ -422,7 +421,7 @@
         // --- Event Listeners for UI ---
         document.getElementById('start-btn').addEventListener('click', () => {
             if (isMobile) {
-                // On mobile, tap to go fullscreen and start game
+                // Request fullscreen on mobile
                 requestFullScreen();
             }
             startGame();
@@ -532,12 +531,12 @@
 
                 if (isMobile && touchX < canvas.width / 2) {
                     // Joystick control
-                    joystick.active = true;
-                    joystick.baseX = touchX;
-                    joystick.baseY = touch.clientY;
-                    joystick.knobX = touchX;
-                    joystick.knobY = touch.clientY;
-                    joystick.touchId = touch.identifier;
+                    touchControls.joystick.active = true;
+                    touchControls.joystick.baseX = touchX;
+                    touchControls.joystick.baseY = touch.clientY;
+                    touchControls.joystick.knobX = touchX;
+                    touchControls.joystick.knobY = touch.clientY;
+                    touchControls.joystick.touchId = touch.identifier;
                 } else {
                     // Fire control
                     isFiring = true;
@@ -547,20 +546,18 @@
 
         canvas.addEventListener('touchmove', (e) => {
             e.preventDefault();
-            if (joystick.active) {
-                const touches = e.changedTouches;
-                for (let i = 0; i < touches.length; i++) {
-                    const touch = touches[i];
-                    if (touch.identifier === joystick.touchId) {
-                        const deltaX = touch.clientX - joystick.baseX;
-                        const distance = Math.min(Math.abs(deltaX), joystick.radius);
-                        const angle = Math.atan2(touch.clientY - joystick.baseY, deltaX);
-                        
-                        joystick.knobX = joystick.baseX + Math.cos(angle) * distance;
-                        joystick.knobY = joystick.baseY + Math.sin(angle) * distance;
-                        
-                        joystick.movementX = (joystick.knobX - joystick.baseX) / joystick.radius;
-                    }
+            const touches = e.touches;
+            for (let i = 0; i < touches.length; i++) {
+                const touch = touches[i];
+                if (touch.identifier === touchControls.joystick.touchId) {
+                    const deltaX = touch.clientX - touchControls.joystick.baseX;
+                    const distance = Math.min(Math.abs(deltaX), touchControls.joystick.radius);
+                    const angle = Math.atan2(touch.clientY - touchControls.joystick.baseY, deltaX);
+                    
+                    touchControls.joystick.knobX = touchControls.joystick.baseX + Math.cos(angle) * distance;
+                    touchControls.joystick.knobY = touchControls.joystick.baseY + Math.sin(angle) * distance;
+                    
+                    touchControls.joystick.movementX = (touchControls.joystick.knobX - touchControls.joystick.baseX) / touchControls.joystick.radius;
                 }
             }
         }, { passive: false });
@@ -570,10 +567,10 @@
             const touches = e.changedTouches;
             for (let i = 0; i < touches.length; i++) {
                 const touch = touches[i];
-                if (touch.identifier === joystick.touchId) {
-                    joystick.active = false;
-                    joystick.movementX = 0;
-                    joystick.touchId = -1;
+                if (touch.identifier === touchControls.joystick.touchId) {
+                    touchControls.joystick.active = false;
+                    touchControls.joystick.movementX = 0;
+                    touchControls.joystick.touchId = -1;
                 } else {
                     isFiring = false;
                 }
@@ -765,7 +762,7 @@
             
             // Update player position based on keyboard input or joystick
             if (isMobile) {
-                player.x += joystick.movementX * 5;
+                player.x += touchControls.joystick.movementX * 5;
             } else if (keyboardMovement !== 0) {
                 player.x += keyboardMovement * 5; // Adjust movement speed as needed
             } else if (isDragging) {
@@ -892,16 +889,16 @@
         }
 
         function drawJoystick() {
-            if (!joystick.active) return;
+            if (!touchControls.joystick.active) return;
             // Draw joystick base
             ctx.beginPath();
-            ctx.arc(joystick.baseX, joystick.baseY, joystick.radius, 0, Math.PI * 2, true);
+            ctx.arc(touchControls.joystick.baseX, touchControls.joystick.baseY, touchControls.joystick.radius, 0, Math.PI * 2, true);
             ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
             ctx.fill();
 
             // Draw joystick knob
             ctx.beginPath();
-            ctx.arc(joystick.knobX, joystick.knobY, joystick.knobRadius, 0, Math.PI * 2, true);
+            ctx.arc(touchControls.joystick.knobX, touchControls.joystick.knobY, touchControls.joystick.knobRadius, 0, Math.PI * 2, true);
             ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
             ctx.fill();
         }
