@@ -507,12 +507,32 @@
         function setNewBossThreshold() {
             nextBossThreshold = 500 + Math.floor(Math.random() * 101); // 500 to 600
         }
+        
+        function requestFullScreen() {
+            const element = document.documentElement;
+            if (element.requestFullscreen) {
+                element.requestFullscreen();
+            } else if (element.mozRequestFullScreen) { // Firefox
+                element.mozRequestFullScreen();
+            } else if (element.webkitRequestFullscreen) { // Chrome, Safari and Opera
+                element.webkitRequestFullscreen();
+            } else if (element.msRequestFullscreen) { // IE/Edge
+                element.msRequestFullscreen();
+            }
+        }
 
 
         function init() {
             // Initial screen display
             loadHighScore();
             showScreen(screens.mainMenu);
+            
+            // Request full screen on mobile devices
+            if (/Mobi|Android/i.test(navigator.userAgent)) {
+                requestFullScreen();
+                window.screen.orientation.lock('landscape');
+            }
+
 
             // Responsive canvas sizing
             function resizeCanvas() {
