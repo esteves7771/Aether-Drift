@@ -84,6 +84,7 @@
             box-shadow: 0 0 20px var(--main-color);
             animation: fadeIn 0.5s ease-in-out forwards;
             max-width: 90%;
+            min-width: 300px;
         }
 
         /* Fade-out animation for screen transitions */
@@ -187,7 +188,7 @@
         }
 
         /* Hide elements initially */
-        #game-screen, #settings-screen, #how-to-play-screen, #game-over-screen {
+        #game-screen, #settings-screen, #how-to-play-screen, #game-over-screen, #mission-control-screen {
             display: none;
         }
         
@@ -235,6 +236,27 @@
             background: linear-gradient(90deg, #42e6a9, #a842e6);
             transition: width 0.3s ease-in-out;
         }
+        
+        .mission-content {
+            margin-top: 1.5rem;
+            text-align: left;
+            border: 1px solid var(--main-color);
+            border-radius: 8px;
+            padding: 1rem;
+            background-color: rgba(66, 230, 169, 0.05);
+        }
+
+        .loading-dots {
+            font-size: 3rem;
+            animation: loading 1s infinite;
+        }
+
+        @keyframes loading {
+            0%, 20% { content: "."; }
+            40% { content: ".."; }
+            60%, 100% { content: "..."; }
+        }
+
     </style>
     <script src="https://cdn.jsdelivr.net/npm/tone@14.7.58/build/Tone.min.js"></script>
 </head>
@@ -256,6 +278,7 @@
             <p id="high-score-display">High Score: 0</p>
             <div class="btn-container">
                 <button id="start-btn" class="btn">Start Game</button>
+                <button id="mission-btn" class="btn">✨ Mission Control</button>
                 <button id="how-to-play-btn" class="btn">How to Play</button>
                 <button id="settings-btn" class="btn">Settings</button>
             </div>
@@ -287,6 +310,20 @@
             <button id="how-to-play-back-btn" class="btn">Back</button>
         </div>
 
+        <div id="mission-control-screen" class="ui-screen">
+            <h1>Mission Control</h1>
+            <p>Ready for a new mission, pilot?</p>
+            <div class="btn-container">
+                <button id="generate-mission-btn" class="btn">Generate Mission Brief</button>
+            </div>
+            <div id="mission-brief-content" class="mission-content" style="display: none;">
+                <h2 id="mission-title" style="font-size: 1.5rem; text-align: center; color: var(--accent-color);"></h2>
+                <p><strong>Objective:</strong> <span id="mission-objective"></span></p>
+                <p><strong>Lore:</strong> <span id="mission-lore"></span></p>
+            </div>
+            <button id="mission-back-btn" class="btn">Back</button>
+        </div>
+
         <div id="game-over-screen" class="ui-screen">
             <h1>Game Over</h1>
             <p>Your final score:</p>
@@ -315,9 +352,14 @@
         const mainMusic = new Tone.Player("https://cdn.jsdelivr.net/gh/esteves7771/Aether-Drift/neon-gaming-128925.mp3").toDestination();
         mainMusic.loop = true;
         mainMusic.autostart = false;
+        mainMusic.fadeIn = 2;   
+        mainMusic.fadeOut = 2;  
+
         const bossMusic = new Tone.Player("https://cdn.jsdelivr.net/gh/esteves7771/Aether-Drift/the-final-boss-battle-158700.mp3").toDestination();
         bossMusic.loop = true;
         bossMusic.autostart = false;
+        bossMusic.fadeIn = 2;   
+        bossMusic.fadeOut = 2;  
         
         const fireSynth = new Tone.Synth({
             oscillator: { type: "square" },
@@ -357,11 +399,34 @@
         let musicEnabled = true;
         let sfxEnabled = true;
 
+        // New functions for smooth music transitions
+        function transitionToBossMusic() {
+            if (musicEnabled) {
+                mainMusic.volume.rampTo(-Infinity, 2);
+                bossMusic.volume.rampTo(-12, 2);
+            }
+        }
+
+        function transitionToMainMusic() {
+            if (musicEnabled) {
+                bossMusic.volume.rampTo(-Infinity, 2);
+                mainMusic.volume.rampTo(-12, 2);
+            }
+        }
+        
         function playMusic() {
             if (musicEnabled) {
+                bossMusic.stop();            // make sure boss music is off
                 mainMusic.volume.value = -12;
-                mainMusic.start().fadeIn = 2;
-                bossMusic.stop();
+                mainMusic.start();           // fadeIn already set
+            }
+        }
+
+        function playBossMusic() {
+            if (musicEnabled) {
+                mainMusic.stop();
+                bossMusic.volume.value = -12;
+                bossMusic.start();
             }
         }
 
@@ -372,7 +437,7 @@
 
         function playFireSound() {
             if (sfxEnabled) {
-                fireSynth.triggerAttackRelease("C4", "16n");
+                fireSynth.triggerAttackRelease("C4", "16n", Tone.now());
             }
         }
         
@@ -434,7 +499,8 @@
             settings: document.getElementById('settings-screen'),
             howToPlay: document.getElementById('how-to-play-screen'),
             game: document.getElementById('game-screen'),
-            gameOver: document.getElementById('game-over-screen')
+            gameOver: document.getElementById('game-over-screen'),
+            missionControl: document.getElementById('mission-control-screen')
         };
         const scoreDisplay = document.getElementById('score-display');
         const finalScoreDisplay = document.getElementById('final-score');
@@ -448,6 +514,14 @@
         const bossHealthBar = document.getElementById('boss-health-bar');
         const playerHealthContainer = document.getElementById('player-health-container');
         const playerHealthBar = document.getElementById('player-health-bar');
+
+        const missionBtn = document.getElementById('mission-btn');
+        const generateMissionBtn = document.getElementById('generate-mission-btn');
+        const missionBackBtn = document.getElementById('mission-back-btn');
+        const missionBriefContent = document.getElementById('mission-brief-content');
+        const missionTitleDisplay = document.getElementById('mission-title');
+        const missionObjectiveDisplay = document.getElementById('mission-objective');
+        const missionLoreDisplay = document.getElementById('mission-lore');
         
         let gameRunning = false;
         let score = 0;
@@ -936,13 +1010,10 @@
             playerHealthContainer.style.display = 'block';
             
             if (musicEnabled) {
-                mainMusic.fadeOut = 2;
-                mainMusic.stop("+2"); 
+                mainMusic.stop("+2");
                 playAlienSound();
-                Tone.Transport.scheduleOnce(() => {
-                    bossMusic.start().fadeIn = 2;
-                    bossMusic.volume.value = -12;
-                }, Tone.now() + 1);
+                bossMusic.volume.value = -12;
+                bossMusic.start("+1"); 
             }
             
             document.body.style.setProperty('--bg-color', '#0a0a16');
@@ -961,9 +1032,9 @@
             baseEnemyHealth = Math.round(baseEnemyHealth * 1.1);
             
             if (musicEnabled) {
-                bossMusic.fadeOut = 2;
                 bossMusic.stop("+2");
-                playMusic();
+                mainMusic.volume.value = -12;
+                mainMusic.start("+2");
             }
             
             document.body.style.setProperty('--bg-color', '#0d0a1b');
@@ -1348,44 +1419,106 @@
         function spawnEnemy() {
             const x = Math.random() * (canvas.width - 100) + 50;
             const y = -50;
-            const enemyType = Math.floor(Math.random() * 4);
+            const enemyType = Math.floor(Math.random() * 5);
             const movementPattern = Math.random() > 0.5 ? 'static' : 'horizontal_patrol';
-            const attackPattern = Math.floor(Math.random() * 3);
             const health = baseEnemyHealth;
-            enemies.push({ x, y, size: 25, type: enemyType, movementPattern, attackPattern, health, movementDirection: 1, isFiring: false });
+            enemies.push({ x, y, size: 25, type: enemyType, movementPattern, health, movementDirection: 1, isFiring: false });
         }
         
         function drawEnemy(enemy) {
             ctx.shadowBlur = 10;
             
-            // Draw main body
-            ctx.fillStyle = '#ffcc00';
-            ctx.beginPath();
-            ctx.moveTo(enemy.x, enemy.y - 15);
-            ctx.lineTo(enemy.x - 25, enemy.y + 10);
-            ctx.lineTo(enemy.x, enemy.y + 25);
-            ctx.lineTo(enemy.x + 25, enemy.y + 10);
-            ctx.closePath();
-            ctx.fill();
+            const size = enemy.size;
 
-            // Cockpit
-            ctx.fillStyle = '#42e6a9';
-            ctx.beginPath();
-            ctx.arc(enemy.x, enemy.y, 8, 0, Math.PI * 2);
-            ctx.fill();
+            switch(enemy.type) {
+                case 0: // Classic Fighter
+                    ctx.shadowColor = '#00ffff';
+                    ctx.fillStyle = '#00ffff';
+                    ctx.beginPath();
+                    ctx.moveTo(enemy.x, enemy.y - size);
+                    ctx.lineTo(enemy.x - size, enemy.y + size);
+                    ctx.lineTo(enemy.x + size, enemy.y + size);
+                    ctx.closePath();
+                    ctx.fill();
 
-            // Pilot
-            ctx.fillStyle = '#1a1a1a';
-            ctx.beginPath();
-            ctx.arc(enemy.x, enemy.y, 5, 0, Math.PI * 2);
-            ctx.fill();
-            
-            // Left wing weapon
-            ctx.fillStyle = '#e642e6';
-            ctx.fillRect(enemy.x - 30, enemy.y + 10, 5, 10);
-            
-            // Right wing weapon
-            ctx.fillRect(enemy.x + 25, enemy.y + 10, 5, 10);
+                    // Cockpit
+                    ctx.fillStyle = '#1a1a1a';
+                    ctx.beginPath();
+                    ctx.arc(enemy.x, enemy.y, size * 0.4, 0, Math.PI * 2);
+                    ctx.fill();
+                    break;
+                case 1: // The Interceptor
+                    ctx.shadowColor = '#ff00ff';
+                    ctx.fillStyle = '#ff00ff';
+                    ctx.beginPath();
+                    ctx.moveTo(enemy.x, enemy.y - size);
+                    ctx.lineTo(enemy.x - size * 0.5, enemy.y + size * 0.5);
+                    ctx.lineTo(enemy.x - size * 1.5, enemy.y);
+                    ctx.lineTo(enemy.x, enemy.y - size * 0.5);
+                    ctx.lineTo(enemy.x + size * 1.5, enemy.y);
+                    ctx.lineTo(enemy.x + size * 0.5, enemy.y + size * 0.5);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    ctx.fillStyle = '#1a1a1a';
+                    ctx.beginPath();
+                    ctx.arc(enemy.x, enemy.y, size * 0.3, 0, Math.PI * 2);
+                    ctx.fill();
+                    break;
+                case 2: // The Heavy Drone
+                    ctx.shadowColor = '#ffff00';
+                    ctx.fillStyle = '#ffff00';
+                    ctx.beginPath();
+                    ctx.rect(enemy.x - size, enemy.y - size, size * 2, size * 2);
+                    ctx.fill();
+
+                    ctx.fillStyle = '#1a1a1a';
+                    ctx.beginPath();
+                    ctx.arc(enemy.x, enemy.y, size * 0.5, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.fillStyle = '#ff00ff';
+                    ctx.fillRect(enemy.x - size * 0.8, enemy.y + size * 0.8, size * 1.6, size * 0.2);
+                    break;
+                case 3: // The Stealth Dart
+                    ctx.shadowColor = '#00ff00';
+                    ctx.fillStyle = '#00ff00';
+                    ctx.beginPath();
+                    ctx.moveTo(enemy.x, enemy.y - size);
+                    ctx.lineTo(enemy.x - size * 0.8, enemy.y + size * 0.2);
+                    ctx.lineTo(enemy.x - size * 0.2, enemy.y + size * 0.2);
+                    ctx.lineTo(enemy.x - size * 0.2, enemy.y + size);
+                    ctx.lineTo(enemy.x + size * 0.2, enemy.y + size);
+                    ctx.lineTo(enemy.x + size * 0.2, enemy.y + size * 0.2);
+                    ctx.lineTo(enemy.x + size * 0.8, enemy.y + size * 0.2);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    ctx.fillStyle = '#1a1a1a';
+                    ctx.fillRect(enemy.x - size * 0.1, enemy.y - size * 0.5, size * 0.2, size);
+                    break;
+                case 4: // The Razor
+                    ctx.shadowColor = '#ff6600';
+                    ctx.fillStyle = '#ff6600';
+                    ctx.beginPath();
+                    ctx.moveTo(enemy.x, enemy.y - size);
+                    ctx.lineTo(enemy.x - size * 1.2, enemy.y + size);
+                    ctx.lineTo(enemy.x + size * 1.2, enemy.y + size);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    ctx.fillStyle = '#ffcc00';
+                    ctx.beginPath();
+                    ctx.moveTo(enemy.x, enemy.y + size * 0.2);
+                    ctx.lineTo(enemy.x - size * 0.5, enemy.y + size * 0.8);
+                    ctx.lineTo(enemy.x + size * 0.5, enemy.y + size * 0.8);
+                    ctx.closePath();
+                    ctx.fill();
+
+                    ctx.fillStyle = '#1a1a1a';
+                    ctx.fillRect(enemy.x - size * 0.1, enemy.y - size * 0.5, size * 0.2, size);
+                    break;
+            }
 
             ctx.shadowBlur = 0;
         }
@@ -1568,6 +1701,71 @@
         
         function distance(x1, y1, x2, y2) {
             return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+        }
+
+        // --- Gemini API Call ---
+        async function getMissionBrief() {
+            generateMissionBtn.disabled = true;
+            generateMissionBtn.textContent = 'Generating...';
+            missionBriefContent.style.display = 'none';
+
+            const userQuery = "Generate a new mission brief for a space shooter game.";
+            const systemPrompt = "You are an AI mission control system for a futuristic space shooter game. Your role is to generate mission briefings. Provide a concise, single-paragraph briefing that is exciting and actionable for the player. The response must be a valid JSON object with `missionTitle`, `objective`, and `lore` fields. The objective should be a specific, simple task related to the game's mechanics, like 'Destroy 50 enemy ships'.";
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                tools: [{ "google_search": {} }],
+                systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                },
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            "missionTitle": { "type": "STRING" },
+                            "objective": { "type": "STRING" },
+                            "lore": { "type": "STRING" }
+                        },
+                        "propertyOrdering": ["missionTitle", "objective", "lore"]
+                    }
+                }
+            };
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                
+                const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (jsonText) {
+                    const mission = JSON.parse(jsonText);
+                    missionTitleDisplay.textContent = mission.missionTitle;
+                    missionObjectiveDisplay.textContent = mission.objective;
+                    missionLoreDisplay.textContent = mission.lore;
+                    missionBriefContent.style.display = 'block';
+                } else {
+                    console.error("API response did not contain valid content.");
+                    missionTitleDisplay.textContent = "Error";
+                    missionObjectiveDisplay.textContent = "Failed to generate mission.";
+                    missionLoreDisplay.textContent = "Please try again.";
+                    missionBriefContent.style.display = 'block';
+                }
+            } catch (error) {
+                console.error("Failed to fetch mission brief:", error);
+                missionTitleDisplay.textContent = "Error";
+                missionObjectiveDisplay.textContent = "Failed to generate mission.";
+                missionLoreDisplay.textContent = "Please check your internet connection and try again.";
+                missionBriefContent.style.display = 'block';
+            } finally {
+                generateMissionBtn.disabled = false;
+                generateMissionBtn.textContent = 'Generate Mission Brief';
+            }
         }
         
         init();
