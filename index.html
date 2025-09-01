@@ -460,7 +460,7 @@
         let gameRunning = false, score = 0;
         let player, enemies, bullets, enemyBullets, powerups, explosions, wreckage, drones;
         let lastTimestamp = 0, gameSpeed = 100, enemySpawnInterval = 2000, lastEnemySpawnTime = 0;
-        let stars = [], parallaxStars = [], enemyBulletSpeed = 3;
+        let stars = [], parallaxStars = [], backgroundElements = [], enemyBulletSpeed = 3;
         let powerupSpawnInterval = 10000, lastPowerupSpawnTime = 0;
         let lastFireTime = 0, fireRate = 100;
         let difficultyLevel = 1, boss, gameMode = 'normal';
@@ -470,6 +470,10 @@
         let nextMiniBossIndex = 0, nextBossIndex = 0;
         const PLAYER_BASE_MAX_HEALTH = 3;
         let PLAYER_MAX_HEALTH = PLAYER_BASE_MAX_HEALTH, playerHealth = PLAYER_MAX_HEALTH;
+        let screenFlash = null;
+        let lastBgElementSpawn = 0;
+        const bgElementSpawnInterval = 5000;
+        let scenicElements = {};
 
         // Power-up state
         const SHIELD_DURATION = 5000, DOUBLE_SHOT_DURATION = 5000, TRIPLE_SHOT_DURATION = 5000;
@@ -576,11 +580,17 @@
             gameRunning = true; score = 0; applyUpgrades(); playerHealth = PLAYER_MAX_HEALTH;
             player = { x: canvas.width / 2, y: canvas.height - 50 };
             enemies = []; bullets = []; enemyBullets = []; powerups = []; explosions = []; wreckage = []; drones = [];
+            backgroundElements = [];
+            scenicElements = {
+                nebula: { active: false, alpha: 0 },
+                giantPlanet: { active: false, alpha: 0, x: 0, y: 0 },
+                spaceRuins: { active: false, alpha: 0 }
+            };
             lastTimestamp = performance.now(); difficultyLevel = 1; gameMode = 'normal';
             boss = null; miniBoss = null; nextMiniBossIndex = 0; nextBossIndex = 0;
             shieldActive = false; shieldTimer = 0; doubleShotActive = false; doubleShotTimer = 0;
-            tripleShotActive = false; tripleShotTimer = 0; timeWarpActive = false; timeWarpTimer = 0;
-            dronesActive = false; dronesTimer = 0;
+            tripleShotActive = false, tripleShotTimer = 0; timeWarpActive = false, timeWarpTimer = 0;
+            dronesActive = false, dronesTimer = 0;
             showScreen(screens.game); scoreDisplay.textContent = `Score: ${score}`; playMusic();
         }
 
@@ -594,6 +604,7 @@
         function startBossFight() {
             gameMode = 'boss'; enemies = []; enemyBullets = []; powerups = []; boss = new Boss();
             bossHealthContainer.style.display = 'block'; playerHealthContainer.style.display = 'block';
+            screenFlash = { color: 'rgba(255, 0, 0, 0.5)', duration: 300, start: performance.now() };
             if (musicEnabled) { mainMusic.stop("+2"); playAlienSound(); bossMusic.volume.value = -12; bossMusic.start("+1"); }
             document.body.style.setProperty('--bg-color', '#0a0a16'); document.body.style.setProperty('--main-color', '#ff6666'); document.body.style.setProperty('--ui-bg', 'rgba(255, 102, 102, 0.1)');
         }
@@ -632,6 +643,7 @@
                 star.y += (star.size * gameSpeed / 300) * deltaTime * timeScale;
                 if (star.y > canvas.height) { star.y = 0; star.x = Math.random() * canvas.width; }
             });
+            updateBackground(deltaTime, timeScale);
             
             if (gameMode === 'normal') {
                 score += deltaTime / 100;
@@ -674,7 +686,7 @@
 
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            drawBackgroundFeatures();
+            drawBackground();
             [...parallaxStars, ...stars].forEach(s => { ctx.fillStyle = `rgba(255, 255, 255, ${s.opacity})`; ctx.beginPath(); ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2); ctx.fill(); });
             wreckage.forEach(drawWreckage);
             drawPlayer();
@@ -686,29 +698,199 @@
             if (shieldActive) drawShield();
             if (timeWarpActive) { ctx.fillStyle = 'rgba(100, 150, 255, 0.1)'; ctx.fillRect(0, 0, canvas.width, canvas.height); }
             drawPowerupHUD(); drawPlayerHealthBar();
+            
+            if (screenFlash && performance.now() - screenFlash.start < screenFlash.duration) {
+                const progress = (performance.now() - screenFlash.start) / screenFlash.duration;
+                ctx.fillStyle = screenFlash.color.replace(/, [0-9.]+\)/, `, ${0.5 * (1 - progress)})`);
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            } else {
+                screenFlash = null;
+            }
         }
         
-        function drawBackgroundFeatures() {
+        function updateBackground(deltaTime, timeScale) {
+            if (performance.now() - lastBgElementSpawn > bgElementSpawnInterval / timeScale) {
+                spawnBackgroundElement();
+                lastBgElementSpawn = performance.now();
+            }
+
+            backgroundElements.forEach(el => {
+                el.y += el.speed * deltaTime * timeScale;
+                if (el.type === 'asteroid') el.rotation += el.rotationSpeed * deltaTime * timeScale;
+            });
+            backgroundElements = backgroundElements.filter(el => el.y < canvas.height + el.size);
+
+            // Update scenic elements based on score
+            if (score > 2500 && !scenicElements.nebula.active) scenicElements.nebula.active = true;
+            if (score > 7000 && !scenicElements.giantPlanet.active) {
+                scenicElements.giantPlanet.active = true;
+                scenicElements.giantPlanet.x = canvas.width * 1.2;
+                scenicElements.giantPlanet.y = canvas.height * 0.1;
+            }
+            if (score > 12000 && !scenicElements.spaceRuins.active) scenicElements.spaceRuins.active = true;
+
+            // Animate scenic elements
+            const fadeSpeed = 0.0005 * deltaTime;
+            if (scenicElements.nebula.active && scenicElements.nebula.alpha < 1) scenicElements.nebula.alpha += fadeSpeed;
+            if (scenicElements.spaceRuins.active && scenicElements.spaceRuins.alpha < 1) scenicElements.spaceRuins.alpha += fadeSpeed;
+            if (scenicElements.giantPlanet.active) {
+                if (scenicElements.giantPlanet.alpha < 1) scenicElements.giantPlanet.alpha += fadeSpeed;
+                if (scenicElements.giantPlanet.x > canvas.width * 0.8) scenicElements.giantPlanet.x -= 0.05 * deltaTime;
+            }
+        }
+        
+        function drawBackground() {
             ctx.save();
-            if (score > 12000) { // Space Ruins
-                ctx.fillStyle = 'rgba(100, 100, 120, 0.3)';
-                ctx.fillRect(canvas.width * 0.1, canvas.height * 0.2, 80, 200);
-                ctx.fillRect(canvas.width * 0.8, canvas.height * 0.5, 120, 60);
-            }
-            if (score > 7000) { // Giant Planet
-                ctx.fillStyle = '#6d4c78';
-                ctx.beginPath(); ctx.arc(canvas.width * 0.8, canvas.height * 0.1, 200, 0, Math.PI * 2); ctx.fill();
-                ctx.strokeStyle = 'rgba(200, 180, 220, 0.5)'; ctx.lineWidth = 15;
-                ctx.beginPath(); ctx.ellipse(canvas.width * 0.8, canvas.height * 0.1, 250, 80, Math.PI / 8, 0, Math.PI * 2); ctx.stroke();
-            }
-            if (score > 2500) { // Nebula
-                const gradient = ctx.createRadialGradient(canvas.width/2, canvas.height/2, 50, canvas.width/2, canvas.height/2, 500);
-                gradient.addColorStop(0, 'rgba(180, 80, 255, 0)');
-                gradient.addColorStop(1, 'rgba(80, 180, 255, 0.2)');
+            // Draw procedural background elements first (deepest layer)
+            backgroundElements.forEach(el => {
+                ctx.globalAlpha = el.opacity;
+                if (el.type === 'planet') {
+                    // Main planet body
+                    ctx.fillStyle = el.color;
+                    ctx.beginPath();
+                    ctx.arc(el.x, el.y, el.size, 0, Math.PI * 2);
+                    ctx.fill();
+                    // Draw texture on top
+                    drawPlanetTexture(el);
+                    // Draw rings if it has them
+                    if (el.hasRings) {
+                        drawPlanetRings(el);
+                    }
+                } else if (el.type === 'dust') {
+                    const gradient = ctx.createRadialGradient(el.x, el.y, 0, el.x, el.y, el.size);
+                    gradient.addColorStop(0, el.color.replace('1)', '0.3)'));
+                    gradient.addColorStop(1, el.color.replace('1)', '0)'));
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(el.x - el.size, el.y - el.size, el.size * 2, el.size * 2);
+                } else if (el.type === 'asteroid') {
+                    ctx.save();
+                    ctx.translate(el.x, el.y);
+                    ctx.rotate(el.rotation);
+                    ctx.fillStyle = el.color;
+                    ctx.beginPath(); // Simple asteroid shape
+                    ctx.moveTo(-el.size, -el.size * 0.5);
+                    ctx.lineTo(el.size, -el.size * 0.8);
+                    ctx.lineTo(el.size * 0.7, el.size);
+                    ctx.lineTo(-el.size * 0.8, el.size * 0.6);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.restore();
+                }
+                ctx.globalAlpha = 1;
+            });
+
+            // Draw major scenic elements
+            if (scenicElements.nebula.active) {
+                const pulse = 0.15 + (Math.sin(Date.now() * 0.0005) + 1) * 0.05;
+                const gradient = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, 50, canvas.width / 2, canvas.height / 2, 600);
+                gradient.addColorStop(0, `rgba(180, 80, 255, ${0 * scenicElements.nebula.alpha})`);
+                gradient.addColorStop(1, `rgba(80, 180, 255, ${pulse * scenicElements.nebula.alpha})`);
                 ctx.fillStyle = gradient;
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
             }
+
+            if (scenicElements.giantPlanet.active) {
+                ctx.globalAlpha = scenicElements.giantPlanet.alpha;
+                ctx.fillStyle = '#6d4c78';
+                ctx.beginPath();
+                ctx.arc(scenicElements.giantPlanet.x, scenicElements.giantPlanet.y, 200, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(200, 180, 220, 0.5)';
+                ctx.lineWidth = 15;
+                ctx.beginPath();
+                ctx.ellipse(scenicElements.giantPlanet.x, scenicElements.giantPlanet.y, 250, 80, Math.PI / 8, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.globalAlpha = 1;
+            }
+
+            if (scenicElements.spaceRuins.active) {
+                ctx.globalAlpha = scenicElements.spaceRuins.alpha;
+                ctx.fillStyle = 'rgba(100, 100, 120, 0.3)';
+                ctx.fillRect(canvas.width * 0.1, canvas.height * 0.2, 80, 200);
+                ctx.fillRect(canvas.width * 0.8, canvas.height * 0.5, 120, 60);
+                ctx.globalAlpha = 1;
+            }
             ctx.restore();
+        }
+        
+        function drawPlanetTexture(el) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(el.x, el.y, el.size, 0, Math.PI * 2);
+            ctx.clip(); // Clip drawing to the planet's circle
+            switch(el.planetType) {
+                case 'gas_giant':
+                    for (let i = 0; i < 5; i++) {
+                        ctx.fillStyle = `hsla(${Math.random() * 30 + 15}, 50%, ${Math.random() * 20 + 50}%, 0.5)`;
+                        ctx.fillRect(el.x - el.size, el.y - el.size + (i * el.size * 2 / 5), el.size * 2, el.size * 2 / 6);
+                    }
+                    break;
+                case 'rocky':
+                    for (let i = 0; i < 10; i++) {
+                        ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+                        ctx.beginPath();
+                        const craterX = el.x + (Math.random() - 0.5) * el.size * 1.5;
+                        const craterY = el.y + (Math.random() - 0.5) * el.size * 1.5;
+                        const craterR = Math.random() * el.size * 0.2 + 2;
+                        ctx.arc(craterX, craterY, craterR, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    break;
+                case 'lava':
+                     for (let i = 0; i < 5; i++) {
+                        ctx.strokeStyle = `hsla(${Math.random() * 10 + 20}, 100%, 60%, 0.8)`;
+                        ctx.lineWidth = Math.random() * 2 + 1;
+                        ctx.beginPath();
+                        ctx.moveTo(el.x + (Math.random() - 0.5) * el.size, el.y + (Math.random() - 0.5) * el.size);
+                        ctx.lineTo(el.x + (Math.random() - 0.5) * el.size, el.y + (Math.random() - 0.5) * el.size);
+                        ctx.stroke();
+                    }
+                    break;
+            }
+            ctx.restore();
+        }
+
+        function drawPlanetRings(el) {
+            ctx.strokeStyle = el.color.replace(/, [0-9.]+\)/, ', 0.5)');
+            ctx.lineWidth = el.size / 8;
+            ctx.beginPath();
+            ctx.ellipse(el.x, el.y, el.size * 1.5, el.size * 0.4, Math.PI / 9, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.lineWidth = 1;
+        }
+
+        function spawnBackgroundElement() {
+            const types = ['planet', 'dust', 'asteroid'];
+            const type = types[Math.floor(Math.random() * types.length)];
+            const el = {
+                type,
+                x: Math.random() * canvas.width,
+                y: -100,
+                speed: Math.random() * 0.04 + 0.02, // Increased speed
+                opacity: Math.random() * 0.4 + 0.1,
+            };
+            if (type === 'planet') {
+                const planetTypes = ['gas_giant', 'rocky', 'ice', 'lava'];
+                el.planetType = planetTypes[Math.floor(Math.random() * planetTypes.length)];
+                el.size = Math.random() * 40 + 20;
+                el.hasRings = Math.random() > 0.7;
+                switch(el.planetType) {
+                    case 'gas_giant': el.color = `hsl(${Math.random() * 30 + 15}, 50%, 60%)`; break;
+                    case 'rocky': el.color = `hsl(0, 0%, ${Math.random() * 30 + 40}%)`; break;
+                    case 'ice': el.color = `hsl(${Math.random() * 40 + 180}, 60%, 70%)`; break;
+                    case 'lava': el.color = `hsl(${Math.random() * 20}, 70%, 40%)`; break;
+                }
+            } else if (type === 'dust') {
+                const colors = ['rgba(180, 80, 255, 1)', 'rgba(80, 180, 255, 1)'];
+                el.size = Math.random() * 150 + 100;
+                el.color = colors[Math.floor(Math.random() * colors.length)];
+            } else if (type === 'asteroid') {
+                el.size = Math.random() * 30 + 15;
+                el.color = '#454545';
+                el.rotation = Math.random() * Math.PI * 2;
+                el.rotationSpeed = (Math.random() - 0.5) * 0.0001;
+            }
+            backgroundElements.push(el);
         }
 
         function drawWreckage(w) {
@@ -813,8 +995,13 @@
             }
             if (gameMode==='normal') { for (let i = enemies.length-1; i>=0; i--) { const e = enemies[i], eRect = { x: e.x-e.size, y: e.y-e.size, width: e.size*2, height: e.size*2 }; if (isColliding(playerRect, eRect)) { if(shieldActive){enemies.splice(i,1);} else {playerHealth--; if(playerHealth<=0){playPlayerExplosionSound();gameOver();return;}else enemies.splice(i,1);}}}}
             for (let i = powerups.length - 1; i >= 0; i--) {
-                const p = powerups[i], pRect = { x: p.x-p.size/2, y: p.y-p.size/2, width: p.size, height: p.size };
-                if (isColliding(playerRect, pRect)) {
+                const p = powerups[i];
+                const pickupRadius = 30; // Increased pickup radius
+                const dx = player.x - p.x;
+                const dy = player.y - p.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < playerSize + p.size/2 + pickupRadius) {
                     if (p.type==='shield'){shieldActive=true;shieldTimer=SHIELD_DURATION;playShieldSound();}
                     else if (p.type==='double_shot'){doubleShotActive=true;doubleShotTimer=DOUBLE_SHOT_DURATION;playShieldSound();}
                     else if (p.type==='triple_shot'){tripleShotActive=true;tripleShotTimer=TRIPLE_SHOT_DURATION;playTripleShotSound();}
