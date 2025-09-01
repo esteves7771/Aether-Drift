@@ -468,6 +468,7 @@
         const miniBossSchedule = [1500, 4500, 8500, 12200, 16000, 21000];
         const bossSchedule = [3000, 6500, 10000, 14000, 19000, 23000];
         let nextMiniBossIndex = 0, nextBossIndex = 0;
+        let nextMiniBossThreshold, nextBossThreshold;
         const PLAYER_BASE_MAX_HEALTH = 3;
         let PLAYER_MAX_HEALTH = PLAYER_BASE_MAX_HEALTH, playerHealth = PLAYER_MAX_HEALTH;
         let screenFlash = null;
@@ -587,7 +588,10 @@
                 spaceRuins: { active: false, alpha: 0 }
             };
             lastTimestamp = performance.now(); difficultyLevel = 1; gameMode = 'normal';
-            boss = null; miniBoss = null; nextMiniBossIndex = 0; nextBossIndex = 0;
+            boss = null; miniBoss = null; 
+            nextMiniBossIndex = 0; nextBossIndex = 0;
+            nextMiniBossThreshold = miniBossSchedule[0];
+            nextBossThreshold = bossSchedule[0];
             shieldActive = false; shieldTimer = 0; doubleShotActive = false; doubleShotTimer = 0;
             tripleShotActive = false, tripleShotTimer = 0; timeWarpActive = false, timeWarpTimer = 0;
             dronesActive = false, dronesTimer = 0;
@@ -647,11 +651,39 @@
             
             if (gameMode === 'normal') {
                 score += deltaTime / 100;
-                if (nextBossIndex < bossSchedule.length && score >= bossSchedule[nextBossIndex]) { startBossFight(); nextBossIndex++; }
-                if (lastTimestamp - lastEnemySpawnTime > enemySpawnInterval / timeScale) { spawnEnemy(); lastEnemySpawnTime = lastTimestamp; }
-                if (!miniBoss && !boss && nextMiniBossIndex < miniBossSchedule.length && score >= miniBossSchedule[nextMiniBossIndex]) {
-                    miniBoss = new MiniBoss(); enemies = []; bossHealthContainer.style.display = 'block'; nextMiniBossIndex++;
+                
+                // Boss Check
+                if (score >= nextBossThreshold) {
+                    startBossFight();
+                    nextBossIndex++;
+                    if (nextBossIndex < bossSchedule.length) {
+                        nextBossThreshold = bossSchedule[nextBossIndex];
+                    } else {
+                        // Procedurally generate the next boss threshold
+                        const lastInterval = bossSchedule[bossSchedule.length - 1] - bossSchedule[bossSchedule.length - 2];
+                        const newInterval = Math.max(4000, lastInterval * (1 - difficultyLevel * 0.02)); // Interval gets shorter
+                        nextBossThreshold += newInterval;
+                    }
                 }
+                
+                // Mini-Boss Check
+                if (!miniBoss && !boss && score >= nextMiniBossThreshold) {
+                    miniBoss = new MiniBoss();
+                    enemies = []; // Clear other enemies
+                    bossHealthContainer.style.display = 'block';
+                    
+                    nextMiniBossIndex++;
+                    if (nextMiniBossIndex < miniBossSchedule.length) {
+                        nextMiniBossThreshold = miniBossSchedule[nextMiniBossIndex];
+                    } else {
+                        // Procedurally generate the next mini-boss threshold
+                        const lastInterval = miniBossSchedule[miniBossSchedule.length - 1] - miniBossSchedule[miniBossSchedule.length - 2];
+                        const newInterval = Math.max(3000, lastInterval * (1 - difficultyLevel * 0.015)); // Interval gets shorter
+                        nextMiniBossThreshold += newInterval;
+                    }
+                }
+
+                if (lastTimestamp - lastEnemySpawnTime > enemySpawnInterval / timeScale) { spawnEnemy(); lastEnemySpawnTime = lastTimestamp; }
                 if (miniBoss) { miniBoss.update(timeScale); bossHealthBar.style.width = `${(miniBoss.health / miniBoss.maxHealth) * 100}%`; }
 
                 enemies.forEach(enemy => {
@@ -1041,4 +1073,5 @@
     </script>
 </body>
 </html>
+
 
