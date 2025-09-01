@@ -188,8 +188,16 @@
         }
 
         /* Hide elements initially */
-        #game-screen, #settings-screen, #how-to-play-screen, #game-over-screen, #mission-control-screen {
+        #game-screen, #settings-screen, #how-to-play-screen, #game-over-screen, #upgrade-screen {
             display: none;
+        }
+
+        /* Small currency badge on main menu */
+        #currency-display {
+            margin-top: .25rem;
+            font-size: clamp(.9rem, 2.2vw, 1.1rem);
+            color: var(--accent-color);
+            text-shadow: 0 0 8px var(--accent-color);
         }
         
         /* Boss Health Bar */
@@ -267,21 +275,19 @@
     </div>
 
     <div class="game-container">
-        <!-- Game Canvas -->
         <canvas id="gameCanvas"></canvas>
-        <!-- A placeholder div for the game screen, controlled by JS -->
         <div id="game-screen"></div>
 
-        <!-- UI Screens -->
         <div id="main-menu-screen" class="ui-screen">
             <h1>Aether Drift</h1>
             <p id="high-score-display">High Score: 0</p>
             <div class="btn-container">
                 <button id="start-btn" class="btn">Start Game</button>
-                <button id="mission-btn" class="btn">✨ Mission Control</button>
+                <button id="upgrade-btn" class="btn">Upgrade Ship</button>
                 <button id="how-to-play-btn" class="btn">How to Play</button>
                 <button id="settings-btn" class="btn">Settings</button>
             </div>
+            <p id="currency-display">Credits: 0</p>
         </div>
         
         <div id="settings-screen" class="ui-screen">
@@ -293,6 +299,17 @@
             </div>
         </div>
         
+        <div id="upgrade-screen" class="ui-screen">
+            <h1>Upgrade Ship</h1>
+            <p id="upgrade-credits">Credits: 0</p>
+            <div class="btn-container">
+                <button id="upgrade-fire-btn" class="btn">Fire Rate Lv.<span id="fire-lv">0</span> — Cost: <span id="fire-cost">100</span></button>
+                <button id="upgrade-speed-btn" class="btn">Speed Lv.<span id="speed-lv">0</span> — Cost: <span id="speed-cost">100</span></button>
+                <button id="upgrade-health-btn" class="btn">Max Health Lv.<span id="health-lv">0</span> — Cost: <span id="health-cost">150</span></button>
+                <button id="upgrade-back-btn" class="btn">Back</button>
+            </div>
+        </div>
+
         <div id="how-to-play-screen" class="ui-screen">
             <h1>How to Play</h1>
             <p><strong>Player Controls:</strong></p>
@@ -308,20 +325,6 @@
                 <li>Defeat the boss to progress to the next difficulty level.</li>
             </ul>
             <button id="how-to-play-back-btn" class="btn">Back</button>
-        </div>
-
-        <div id="mission-control-screen" class="ui-screen">
-            <h1>Mission Control</h1>
-            <p>Ready for a new mission, pilot?</p>
-            <div class="btn-container">
-                <button id="generate-mission-btn" class="btn">Generate Mission Brief</button>
-            </div>
-            <div id="mission-brief-content" class="mission-content" style="display: none;">
-                <h2 id="mission-title" style="font-size: 1.5rem; text-align: center; color: var(--accent-color);"></h2>
-                <p><strong>Objective:</strong> <span id="mission-objective"></span></p>
-                <p><strong>Lore:</strong> <span id="mission-lore"></span></p>
-            </div>
-            <button id="mission-back-btn" class="btn">Back</button>
         </div>
 
         <div id="game-over-screen" class="ui-screen">
@@ -343,7 +346,6 @@
             <div id="player-health-bar"></div>
         </div>
 
-        <!-- Score Display -->
         <div id="score-display">Score: 0</div>
     </div>
 
@@ -365,11 +367,11 @@
             oscillator: { type: "square" },
             envelope: { attack: 0.001, decay: 0.1, sustain: 0.05, release: 0.1 }
         }).toDestination();
-        fireSynth.volume.value = -12; // Adjusted volume
+        fireSynth.volume.value = -20; // reduced ~60% for better balance
         
         const enemyExplosionSynth = new Tone.NoiseSynth().toDestination();
         const playerExplosionSynth = new Tone.MembraneSynth().toDestination();
-        const enemyFireSynth = new Tone.Synth({
+        const enemyFireSynth = new Tone.PolySynth(Tone.Synth, {
             oscillator: { type: "sine" },
             envelope: { attack: 0.001, decay: 0.1, sustain: 0.05, release: 0.1 }
         }).toDestination();
@@ -396,8 +398,33 @@
             envelope: { attack: 0.001, decay: 0.2, sustain: 0.1, release: 0.2 }
         }).toDestination();
 
+        // New Funny Synths
+        const funnyBotSynth = new Tone.FMSynth({
+            harmonicity: 8,
+            modulationIndex: 2,
+            envelope: { attack: 0.001, decay: 0.2, sustain: 0, release: 0.2 }
+        }).toDestination();
+        funnyBotSynth.volume.value = -15;
+
+        const funnyMiniBossSynth = new Tone.Synth({
+            oscillator: { type: 'triangle' },
+            envelope: { attack: 0.01, decay: 0.5, sustain: 0.1, release: 0.5 }
+        }).toDestination();
+        funnyMiniBossSynth.volume.value = -10;
+
+        const funnyBossSynth = new Tone.NoiseSynth({
+            noise: { type: 'white' },
+            envelope: { attack: 0.01, decay: 0.1, sustain: 0.05, release: 0.2 }
+        }).toDestination();
+        funnyBossSynth.volume.value = -18;
+
+
         let musicEnabled = true;
         let sfxEnabled = true;
+
+        mainMusic.onstop = () => {}; bossMusic.onstop = () => {};
+        mainMusic.onerror = (e)=>console.warn('Main music error', e);
+        bossMusic.onerror = (e)=>console.warn('Boss music error', e);
 
         // New functions for smooth music transitions
         function transitionToBossMusic() {
@@ -416,9 +443,9 @@
         
         function playMusic() {
             if (musicEnabled) {
-                bossMusic.stop();            // make sure boss music is off
+                bossMusic.stop();           // make sure boss music is off
                 mainMusic.volume.value = -12;
-                mainMusic.start();           // fadeIn already set
+                mainMusic.start();          // fadeIn already set
             }
         }
 
@@ -444,7 +471,8 @@
         let lastExplosionSoundTime = 0;
         const explosionSoundCooldown = 50;
         function playEnemyExplosionSound() {
-            if (sfxEnabled && performance.now() - lastExplosionSoundTime > explosionSoundCooldown) {
+            // Sound is now boss-only
+            if (sfxEnabled && (gameMode === 'boss' || miniBoss) && performance.now() - lastExplosionSoundTime > explosionSoundCooldown) {
                 enemyExplosionSynth.triggerAttackRelease("16n", Tone.now());
                 lastExplosionSoundTime = performance.now();
             }
@@ -492,15 +520,35 @@
             }
         }
         
+        // New funny sound functions
+        function playFunnyBotSound() {
+            if (sfxEnabled) {
+                funnyBotSynth.triggerAttackRelease("C6", "8n", Tone.now());
+            }
+        }
+
+        function playFunnyMiniBossSound() {
+            if (sfxEnabled) {
+                funnyMiniBossSynth.triggerAttackRelease("G4", "4n", Tone.now());
+                funnyMiniBossSynth.frequency.rampTo("C4", 0.5, Tone.now());
+            }
+        }
+
+        function playFunnyBossSound() {
+            if (sfxEnabled) {
+                funnyBossSynth.triggerAttackRelease("16n", Tone.now());
+            }
+        }
+
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const screens = {
             mainMenu: document.getElementById('main-menu-screen'),
             settings: document.getElementById('settings-screen'),
+            upgrade: document.getElementById('upgrade-screen'),
             howToPlay: document.getElementById('how-to-play-screen'),
             game: document.getElementById('game-screen'),
             gameOver: document.getElementById('game-over-screen'),
-            missionControl: document.getElementById('mission-control-screen')
         };
         const scoreDisplay = document.getElementById('score-display');
         const finalScoreDisplay = document.getElementById('final-score');
@@ -514,14 +562,6 @@
         const bossHealthBar = document.getElementById('boss-health-bar');
         const playerHealthContainer = document.getElementById('player-health-container');
         const playerHealthBar = document.getElementById('player-health-bar');
-
-        const missionBtn = document.getElementById('mission-btn');
-        const generateMissionBtn = document.getElementById('generate-mission-btn');
-        const missionBackBtn = document.getElementById('mission-back-btn');
-        const missionBriefContent = document.getElementById('mission-brief-content');
-        const missionTitleDisplay = document.getElementById('mission-title');
-        const missionObjectiveDisplay = document.getElementById('mission-objective');
-        const missionLoreDisplay = document.getElementById('mission-lore');
         
         let gameRunning = false;
         let score = 0;
@@ -532,12 +572,12 @@
         let lastEnemySpawnTime = 0;
         let stars = [];
         let parallaxStars = [];
-        let nextBossThreshold = 3000;
         let enemyBulletSpeed = 3;
         let powerupSpawnInterval = 10000;
         let lastPowerupSpawnTime = 0;
         let lastFireTime = 0;
-        const fireRate = 100; 
+        const fireRateBase = 100;
+        let fireRate = fireRateBase;    
         let difficultyLevel = 1;
         let boss;
         let gameMode = 'normal';
@@ -547,8 +587,15 @@
         const hueShiftSpeed = 0.5;
         let baseEnemyHealth = 3;
 
+        // New Boss Scheduling
+        const miniBossSchedule = [1500, 4500, 8500, 12200, 16000, 21000];
+        const bossSchedule = [3000, 6500, 10000, 14000, 19000, 23000];
+        let nextMiniBossIndex = 0;
+        let nextBossIndex = 0;
+
         // Player health
-        const PLAYER_MAX_HEALTH = 3;
+        const PLAYER_BASE_MAX_HEALTH = 3;
+        let PLAYER_MAX_HEALTH = PLAYER_BASE_MAX_HEALTH;
         let playerHealth = PLAYER_MAX_HEALTH;
 
         // Power-up state
@@ -568,6 +615,8 @@
         const playerSize = 10;
         const playerColor = '#42e6a9';
         let keyboardMovement = { x: 0, y: 0 };
+        const moveSpeedBase = 5;
+        let moveSpeed = moveSpeedBase;
         let isFiring = false;
         let isDragging = false;
         let touchStartPos = { x: 0, y: 0 };
@@ -577,6 +626,72 @@
         // High score
         let highScore = 0;
         
+        // --- Persistent Currency & Upgrades ---
+        let credits = 0;
+        const UPG_KEY = 'aetherDriftUpgrades';
+        const CRED_KEY = 'aetherDriftCredits';
+
+        const upgrades = {
+            fireRateLv: 0,
+            speedLv: 0,
+            healthLv: 0
+        };
+
+        function loadProgress() {
+            const c = localStorage.getItem(CRED_KEY);
+            if (c) credits = parseInt(c, 10) || 0;
+
+            const u = localStorage.getItem(UPG_KEY);
+            if (u) {
+                const parsed = JSON.parse(u);
+                upgrades.fireRateLv = parsed.fireRateLv || 0;
+                upgrades.speedLv = parsed.speedLv || 0;
+                upgrades.healthLv = parsed.healthLv || 0;
+            }
+            updateCurrencyLabels();
+        }
+
+        function saveProgress() {
+            localStorage.setItem(CRED_KEY, credits.toString());
+            localStorage.setItem(UPG_KEY, JSON.stringify(upgrades));
+            updateCurrencyLabels();
+        }
+
+        function upgradeCost(base, lv, growth=1.4) {
+            return Math.round(base * Math.pow(growth, lv));
+        }
+
+        function updateCurrencyLabels() {
+            const onMenu = document.getElementById('currency-display');
+            const onUpg = document.getElementById('upgrade-credits');
+            if (onMenu) onMenu.textContent = `Credits: ${credits}`;
+            if (onUpg) onUpg.textContent = `Credits: ${credits}`;
+
+            const fireCostEl = document.getElementById('fire-cost');
+            const speedCostEl = document.getElementById('speed-cost');
+            const healthCostEl = document.getElementById('health-cost');
+            const fireLvEl = document.getElementById('fire-lv');
+            const speedLvEl = document.getElementById('speed-lv');
+            const healthLvEl = document.getElementById('health-lv');
+
+            if (fireCostEl) fireCostEl.textContent = upgradeCost(100, upgrades.fireRateLv);
+            if (speedCostEl) speedCostEl.textContent = upgradeCost(100, upgrades.speedLv);
+            if (healthCostEl) healthCostEl.textContent = upgradeCost(150, upgrades.healthLv, 1.35);
+
+            if (fireLvEl) fireLvEl.textContent = upgrades.fireRateLv;
+            if (speedLvEl) speedLvEl.textContent = upgrades.speedLv;
+            if (healthLvEl) healthLvEl.textContent = upgrades.healthLv;
+        }
+
+        function applyUpgrades() {
+            // Fire rate: 10% faster per level (lower ms between shots)
+            fireRate = Math.max(40, Math.round(fireRateBase * Math.pow(0.9, upgrades.fireRateLv)));
+            // Speed: +12% per level
+            moveSpeed = moveSpeedBase * (1 + 0.12 * upgrades.speedLv);
+            // Health: +1 max HP per level
+            PLAYER_MAX_HEALTH = PLAYER_BASE_MAX_HEALTH + upgrades.healthLv;
+        }
+
         // --- Game Classes ---
         class Boss {
             constructor() {
@@ -593,6 +708,7 @@
                 this.bulletSpeed = 2 + difficultyLevel * 0.5;
                 this.movementDirection = Math.random() > 0.5 ? 1 : -1;
                 this.movementSpeed = 1;
+                this.phase = 1;
             }
 
             draw() {
@@ -646,30 +762,39 @@
             }
 
             update() {
-                // Move boss to target position
+                // Move into frame
                 if (this.y < this.targetY) {
-                    this.y += 1;
+                    this.y += 2; // A bit faster than miniboss
                 } else {
-                    // Oscillate horizontally
+                    // Lateral movement
                     this.x += this.movementDirection * this.movementSpeed;
-                    if (this.x < 100 || this.x > canvas.width - 100) {
+                    if (this.x < this.size || this.x > canvas.width - this.size) {
                         this.movementDirection *= -1;
                     }
                 }
-                
-                // Attack logic
-                if (performance.now() - this.lastAttackTime > this.attackInterval) {
+
+                // Attack logic - only attack when on screen
+                if (this.y >= this.targetY && performance.now() - this.lastAttackTime > this.attackInterval) {
                     this.attack();
                     this.lastAttackTime = performance.now();
+                }
+                
+                // Phase change at 50% HP: faster & more relentless
+                if (this.phase === 1 && this.health <= this.maxHealth / 2) {
+                    this.phase = 2;
+                    this.attackInterval = Math.max(500, this.attackInterval * 0.6);
+                    this.bulletSpeed += 1;
+                    this.movementSpeed = 2;
                 }
             }
 
             attack() {
-                playBossFireSound();
+                const phaseBonus = (this.phase === 2) ? 2 : 0;
+                playFunnyBossSound();
                 this.attackPattern = Math.floor(Math.random() * 3);
                 
                 if (this.attackPattern === 0) { // Spread Shot
-                    const numBullets = 3 + difficultyLevel;
+                    const numBullets = 3 + difficultyLevel + phaseBonus;
                     for (let i = 0; i < numBullets; i++) {
                         const angle = (i / (numBullets - 1)) * Math.PI - Math.PI/2;
                         enemyBullets.push({
@@ -682,34 +807,122 @@
                         });
                     }
                 } else if (this.attackPattern === 1) { // Homing Shot
-                     enemyBullets.push({
-                        x: this.x,
-                        y: this.y + this.size,
-                        size: 10,
-                        speedY: this.bulletSpeed,
-                        speedX: 0,
-                        isHoming: true,
-                        homingStartTime: performance.now(),
-                        homingDuration: 1500
-                     });
+                    const repeats = 1 + (this.phase === 2 ? 1 : 0);
+                    for (let r=0; r<repeats; r++) {
+                         enemyBullets.push({
+                            x: this.x,
+                            y: this.y + this.size,
+                            size: 10,
+                            speedY: this.bulletSpeed,
+                            speedX: 0,
+                            isHoming: true,
+                            homingStartTime: performance.now(),
+                            homingDuration: 1800
+                         });
+                    }
                 } else if (this.attackPattern === 2) { // Burst Fire
-                     const numBullets = 2 + difficultyLevel;
-                     for (let i = 0; i < numBullets; i++) {
-                        setTimeout(() => {
-                           enemyBullets.push({
-                                x: this.x,
-                                y: this.y + this.size,
-                                size: 10,
-                                speedY: this.bulletSpeed,
-                                speedX: 0,
-                                isHoming: false
-                            });
-                        }, i * 200);
-                     }
+                      const numBullets = 2 + difficultyLevel + phaseBonus;
+                      for (let i = 0; i < numBullets; i++) {
+                          setTimeout(() => {
+                              enemyBullets.push({
+                                  x: this.x,
+                                  y: this.y + this.size,
+                                  size: 10,
+                                  speedY: this.bulletSpeed,
+                                  speedX: 0,
+                                  isHoming: false
+                              });
+                          }, i * 200);
+                      }
                 }
             }
         }
         
+        class MiniBoss {
+            constructor() {
+                this.x = canvas.width / 2;
+                this.y = -120;
+                this.targetY = 120;
+                this.size = 60;
+                this.health = 30 + 8 * (difficultyLevel - 1); // Reduced HP
+                this.maxHealth = this.health;
+                this.lastAttackTime = 0;
+                this.attackInterval = 1200; // Slower fire rate
+                this.bulletSpeed = 3.0 + difficultyLevel * 0.3;
+                this.dir = Math.random() > 0.5 ? 1 : -1;
+                this.phase = 1;
+            }
+            update() {
+                if (this.y < this.targetY) this.y += 1.5;
+                else {
+                    this.x += this.dir * 2;
+                    if (this.x < 80 || this.x > canvas.width - 80) this.dir *= -1;
+                }
+                // Aimed spread shot
+                if (performance.now() - this.lastAttackTime > this.attackInterval) {
+                    this.lastAttackTime = performance.now();
+                    playFunnyMiniBossSound();
+                    const spread = this.phase === 1 ? 3 : 4; // Reduced bullet count in phase 2
+                    const angleToPlayer = Math.atan2(player.y - (this.y + this.size), player.x - this.x);
+                    for (let i = 0; i < spread; i++) {
+                        const a = angleToPlayer + (i - (spread - 1) / 2) * 0.20; // Tighter spread
+                        enemyBullets.push({
+                            x: this.x, y: this.y + this.size,
+                            size: 8,
+                            speedX: this.bulletSpeed * Math.cos(a),
+                            speedY: this.bulletSpeed * Math.sin(a),
+                            isHoming: this.phase === 2 && i % 2 === 0
+                        });
+                    }
+                }
+                // phase shift at 50%
+                if (this.phase === 1 && this.health <= this.maxHealth/2) {
+                    this.phase = 2;
+                    this.attackInterval = 850; // Slower fire rate in phase 2
+                    this.bulletSpeed += 0.5;
+                }
+            }
+            draw() {
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#e642e6';
+
+                // Main Body
+                ctx.fillStyle = '#e642e6';
+                ctx.beginPath();
+                ctx.moveTo(this.x, this.y - this.size * 0.8);
+                ctx.lineTo(this.x - this.size * 0.7, this.y + this.size * 0.8);
+                ctx.lineTo(this.x + this.size * 0.7, this.y + this.size * 0.8);
+                ctx.closePath();
+                ctx.fill();
+
+                // Wings
+                ctx.fillStyle = '#a842e6';
+                ctx.beginPath();
+                ctx.moveTo(this.x - this.size * 0.6, this.y + this.size * 0.5);
+                ctx.lineTo(this.x - this.size * 1.5, this.y + this.size * 0.2);
+                ctx.lineTo(this.x - this.size * 0.7, this.y + this.size * 0.8);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.moveTo(this.x + this.size * 0.6, this.y + this.size * 0.5);
+                ctx.lineTo(this.x + this.size * 1.5, this.y + this.size * 0.2);
+                ctx.lineTo(this.x + this.size * 0.7, this.y + this.size * 0.8);
+                ctx.closePath();
+                ctx.fill();
+                
+                // Cockpit
+                ctx.fillStyle = '#ffcc00';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * 0.3, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.shadowBlur = 0;
+            }
+        }
+        let miniBoss = null;
+        let lastMiniBossTime = 0;
+
         // --- Event Listeners for UI ---
         document.getElementById('start-btn').addEventListener('click', async () => {
             // Start the audio context first, tied to a user gesture
@@ -719,7 +932,11 @@
             }
             startGame();
         });
-        document.getElementById('play-again-btn').addEventListener('click', startGame);
+        document.getElementById('play-again-btn').addEventListener('click', async () => {
+            await Tone.start();
+            stopMusic();
+            startGame();
+        });
         document.getElementById('how-to-play-btn').addEventListener('click', () => showScreen(screens.howToPlay));
         document.getElementById('settings-btn').addEventListener('click', () => showScreen(screens.settings));
         document.getElementById('back-btn').addEventListener('click', () => showScreen(screens.mainMenu));
@@ -727,6 +944,50 @@
         document.getElementById('main-menu-btn').addEventListener('click', () => {
             stopMusic();
             showScreen(screens.mainMenu);
+        });
+        
+        document.getElementById('upgrade-btn').addEventListener('click', () => {
+            showScreen(screens.upgrade);
+            updateCurrencyLabels();
+        });
+
+        document.getElementById('upgrade-back-btn').addEventListener('click', () => {
+            showScreen(screens.mainMenu);
+            updateCurrencyLabels();
+        });
+
+        document.getElementById('upgrade-fire-btn').addEventListener('click', () => {
+            const cost = upgradeCost(100, upgrades.fireRateLv);
+            if (credits >= cost) {
+                credits -= cost;
+                upgrades.fireRateLv++;
+                saveProgress();
+                applyUpgrades();
+            }
+        });
+
+        document.getElementById('upgrade-speed-btn').addEventListener('click', () => {
+            const cost = upgradeCost(100, upgrades.speedLv);
+            if (credits >= cost) {
+                credits -= cost;
+                upgrades.speedLv++;
+                saveProgress();
+                applyUpgrades();
+            }
+        });
+
+        document.getElementById('upgrade-health-btn').addEventListener('click', () => {
+            const cost = upgradeCost(150, upgrades.healthLv, 1.35);
+            if (credits >= cost) {
+                credits -= cost;
+                upgrades.healthLv++;
+                saveProgress();
+                applyUpgrades();
+                // If on menu, reflect new max immediately
+                if (!gameRunning) {
+                    playerHealth = PLAYER_MAX_HEALTH;
+                }
+            }
         });
 
         // Toggle music and SFX
@@ -914,6 +1175,8 @@
 
         function init() {
             loadHighScore();
+            loadProgress();
+            applyUpgrades();
             showScreen(screens.mainMenu);
             
             function resizeCanvas() {
@@ -946,6 +1209,7 @@
         function startGame() {
             gameRunning = true;
             score = 0;
+            applyUpgrades();
             playerHealth = PLAYER_MAX_HEALTH;
             player = { x: canvas.width / 2, y: canvas.height - 50 };
             enemies = [];
@@ -956,7 +1220,10 @@
             lastTimestamp = performance.now();
             difficultyLevel = 1;
             gameMode = 'normal';
-            nextBossThreshold = 3000;
+            boss = null;
+            miniBoss = null;
+            nextMiniBossIndex = 0;
+            nextBossIndex = 0;
             
             shieldActive = false;
             shieldTimer = 0;
@@ -1013,7 +1280,7 @@
                 mainMusic.stop("+2");
                 playAlienSound();
                 bossMusic.volume.value = -12;
-                bossMusic.start("+1"); 
+                bossMusic.start("+1");  
             }
             
             document.body.style.setProperty('--bg-color', '#0a0a16');
@@ -1026,10 +1293,7 @@
             boss = null;
             bossHealthContainer.style.display = 'none';
             difficultyLevel++;
-            nextBossThreshold += 3000;
-            enemySpawnInterval = Math.max(500, 2000 - difficultyLevel * 100);
-            enemyBulletSpeed = 3 + difficultyLevel * 0.2;
-            baseEnemyHealth = Math.round(baseEnemyHealth * 1.1);
+            // The trigger is now handled by the schedule array index
             
             if (musicEnabled) {
                 bossMusic.stop("+2");
@@ -1081,8 +1345,8 @@
             }
             
             // Player movement
-            player.x += keyboardMovement.x * 5;
-            player.y += keyboardMovement.y * 5;
+            player.x += keyboardMovement.x * moveSpeed;
+            player.y += keyboardMovement.y * moveSpeed;
             
             // Clamp player position to stay within canvas bounds
             const playerWidth = playerSize * 2;
@@ -1090,10 +1354,12 @@
             player.x = Math.max(playerWidth / 2, Math.min(canvas.width - playerWidth / 2, player.x));
             player.y = Math.max(playerHeight / 2, Math.min(canvas.height - playerHeight / 2, player.y));
             
+            const currentBossThreshold = (nextBossIndex < bossSchedule.length) ? bossSchedule[nextBossIndex] : Infinity;
+
             // Update stars for parallax effect (they move down to simulate forward travel)
             parallaxStars.forEach(star => {
                 star.y += (gameSpeed / 400) * deltaTime;
-                if (gameMode === 'boss' || score > nextBossThreshold - 500) {
+                if (gameMode === 'boss' || score > currentBossThreshold - 500) {
                      star.y += 2;
                 }
                 if (star.y > canvas.height) {
@@ -1103,8 +1369,8 @@
             });
             stars.forEach(star => {
                 star.y += (gameSpeed / 200) * deltaTime;
-                if (gameMode === 'boss' || score > nextBossThreshold - 500) {
-                     star.y += 4;
+                if (gameMode === 'boss' || score > currentBossThreshold - 500) {
+                    star.y += 4;
                 }
                 if (star.y > canvas.height) {
                     star.y = 0;
@@ -1116,18 +1382,54 @@
             if (gameMode === 'normal') {
                 score += deltaTime / 100;
                 
-                if (score >= nextBossThreshold) {
+                // Check boss schedule
+                if (nextBossIndex < bossSchedule.length && score >= bossSchedule[nextBossIndex]) {
                     startBossFight();
+                    nextBossIndex++; 
                 }
 
                 if (lastTimestamp - lastEnemySpawnTime > enemySpawnInterval) {
                     spawnEnemy();
                     lastEnemySpawnTime = lastTimestamp;
                 }
+                
+                // Mini-boss recurring spawn based on schedule
+                if (!miniBoss && !boss && gameMode === 'normal' && nextMiniBossIndex < miniBossSchedule.length && score >= miniBossSchedule[nextMiniBossIndex]) {
+                    miniBoss = new MiniBoss();
+                    enemies = []; // Clear other bots
+                    bossHealthContainer.style.display = 'block';
+                    nextMiniBossIndex++; // Use the next threshold
+                }
+
+                if (miniBoss) {
+                    miniBoss.update();
+                    bossHealthBar.style.width = `${(miniBoss.health / miniBoss.maxHealth) * 100}%`;
+                    // end if leaves screen (rare)
+                    if (miniBoss.y > canvas.height + 100) miniBoss = null, bossHealthContainer.style.display = 'none';
+                }
 
                 enemies.forEach(enemy => {
-                    // Update based on movement pattern
-                    if (enemy.movementPattern === 'static') {
+                    const v = 3 + (enemy.speedBonus || 0);
+                    if (enemy.type === 5) { // ZigZag runner
+                        enemy.y += v;
+                        enemy.x += Math.sin(enemy.y * 0.05) * 2.2;
+                        if (Math.random() < 0.008 + difficultyLevel * 0.0015) spawnEnemyBullet(enemy);
+                    } else if (enemy.type === 6) { // Sine blaster
+                        enemy.y += v * 0.8;
+                        enemy.x += Math.sin(enemy.y * 0.08) * 3.2;
+                        if (Math.random() < 0.012 + difficultyLevel * 0.0015) {
+                            // 3-way shot, no sound for regular bots
+                            [-0.25, 0, 0.25].forEach(ang => {
+                                enemyBullets.push({
+                                    x: enemy.x, y: enemy.y,
+                                    size: 5,
+                                    speedY: enemyBulletSpeed * (1 + Math.abs(ang)),
+                                    speedX: enemyBulletSpeed * Math.sin(ang * Math.PI),
+                                    isHoming: false
+                                });
+                            });
+                        }
+                    } else if (enemy.movementPattern === 'static') {
                         const fixedY = 150;
                         if (enemy.y < fixedY) {
                             enemy.y += 3;
@@ -1197,7 +1499,8 @@
         }
 
         function draw() {
-            const bossProximity = Math.max(0, (score - (nextBossThreshold - 500)) / 500);
+            const currentBossThreshold = (nextBossIndex < bossSchedule.length) ? bossSchedule[nextBossIndex] : Infinity;
+            const bossProximity = Math.max(0, (score - (currentBossThreshold - 500)) / 500);
             
             const r = 13 - (13 - 10) * bossProximity;
             const g = 10 - (10 - 7) * bossProximity;
@@ -1212,7 +1515,8 @@
             drawPlayer();
 
             if (gameMode === 'normal') {
-                 enemies.forEach(enemy => drawEnemy(enemy));
+                enemies.forEach(enemy => drawEnemy(enemy));
+                if (miniBoss) miniBoss.draw();
             } else if (gameMode === 'boss') {
                 boss.draw();
             }
@@ -1401,8 +1705,8 @@
         function spawnEnemyBullet(enemy) {
             // New logic: check if the enemy is not currently firing.
             if (!enemy.isFiring) {
-                 playEnemyFireSound();
-                 enemyBullets.push({
+                // playEnemyFireSound(); // Removed sound for regular bots
+                enemyBullets.push({
                     x: enemy.x,
                     y: enemy.y,
                     size: 5,
@@ -1419,10 +1723,16 @@
         function spawnEnemy() {
             const x = Math.random() * (canvas.width - 100) + 50;
             const y = -50;
-            const enemyType = Math.floor(Math.random() * 5);
+            const enemyType = Math.floor(Math.random() * 7); // 0..6
             const movementPattern = Math.random() > 0.5 ? 'static' : 'horizontal_patrol';
-            const health = baseEnemyHealth;
-            enemies.push({ x, y, size: 25, type: enemyType, movementPattern, health, movementDirection: 1, isFiring: false });
+            let health = baseEnemyHealth;
+            let speedBonus = 0;
+
+            if (enemyType === 5 || enemyType === 6) {
+                health = 10; // tougher
+                speedBonus = 1.5;
+            }
+            enemies.push({ x, y, size: 25, type: enemyType, movementPattern, health, movementDirection: 1, isFiring: false, speedBonus });
         }
         
         function drawEnemy(enemy) {
@@ -1497,26 +1807,47 @@
                     ctx.fillStyle = '#1a1a1a';
                     ctx.fillRect(enemy.x - size * 0.1, enemy.y - size * 0.5, size * 0.2, size);
                     break;
-                case 4: // The Razor
-                    ctx.shadowColor = '#ff6600';
-                    ctx.fillStyle = '#ff6600';
+                case 4: // The Scout - New visible design
+                    ctx.shadowColor = '#ff8c00';
+                    ctx.fillStyle = '#ff8c00';
+                    ctx.beginPath();
+                    ctx.moveTo(enemy.x, enemy.y + size);
+                    ctx.lineTo(enemy.x - size, enemy.y - size);
+                    ctx.lineTo(enemy.x, enemy.y);
+                    ctx.lineTo(enemy.x + size, enemy.y - size);
+                    ctx.closePath();
+                    ctx.fill();
+                    break;
+                case 5: // Redesigned "Cross" enemy -> now a "Spike Drone"
+                    ctx.shadowColor = '#66e6ff';
+                    ctx.fillStyle = '#66e6ff';
+                    // Main spiky body
+                    ctx.beginPath();
+                    ctx.moveTo(enemy.x, enemy.y + size);
+                    ctx.lineTo(enemy.x - size, enemy.y - size * 0.5);
+                    ctx.lineTo(enemy.x + size, enemy.y - size * 0.5);
+                    ctx.closePath();
+                    ctx.fill();
+                    // Top detail
+                    ctx.fillStyle = '#1a1a1a';
+                    ctx.beginPath();
+                    ctx.moveTo(enemy.x, enemy.y);
+                    ctx.lineTo(enemy.x - size*0.5, enemy.y - size*0.8);
+                    ctx.lineTo(enemy.x + size*0.5, enemy.y - size*0.8);
+                    ctx.closePath();
+                    ctx.fill();
+                    break;
+                case 6: // 8-bit Magenta Viper
+                    ctx.shadowColor = '#ff44cc';
+                    ctx.fillStyle = '#12081a';
                     ctx.beginPath();
                     ctx.moveTo(enemy.x, enemy.y - size);
-                    ctx.lineTo(enemy.x - size * 1.2, enemy.y + size);
-                    ctx.lineTo(enemy.x + size * 1.2, enemy.y + size);
+                    ctx.lineTo(enemy.x - size, enemy.y + size);
+                    ctx.lineTo(enemy.x + size, enemy.y + size);
                     ctx.closePath();
                     ctx.fill();
-
-                    ctx.fillStyle = '#ffcc00';
-                    ctx.beginPath();
-                    ctx.moveTo(enemy.x, enemy.y + size * 0.2);
-                    ctx.lineTo(enemy.x - size * 0.5, enemy.y + size * 0.8);
-                    ctx.lineTo(enemy.x + size * 0.5, enemy.y + size * 0.8);
-                    ctx.closePath();
-                    ctx.fill();
-
-                    ctx.fillStyle = '#1a1a1a';
-                    ctx.fillRect(enemy.x - size * 0.1, enemy.y - size * 0.5, size * 0.2, size);
+                    ctx.fillStyle = '#ff44cc';
+                    ctx.fillRect(enemy.x - size*0.6, enemy.y + size*0.2, size*1.2, size*0.18);
                     break;
             }
 
@@ -1598,10 +1929,15 @@
                             enemy.health--;
                             
                             if (enemy.health <= 0) {
-                                playEnemyExplosionSound();
+                                // playEnemyExplosionSound(); // Removed sound for regular bots
+                                if (Math.random() < 0.2) { // 20% chance for a funny sound
+                                    playFunnyBotSound();
+                                }
                                 explosions.push({ x: enemy.x, y: enemy.y, radius: 0, alpha: 1 });
                                 enemies.splice(j, 1);
                                 score += 100;
+                                credits += 5; // earn credits for enemy
+                                saveProgress();
                             }
                             break;
                         }
@@ -1612,11 +1948,31 @@
                         bullets.splice(i, 1);
                         boss.health--;
                         if (boss.health <= 0) {
-                             playEnemyExplosionSound();
+                             playEnemyExplosionSound(); // Keep for boss
                              explosions.push({ x: boss.x, y: boss.y, radius: 0, alpha: 1 });
+                             credits += 100; // boss bounty
+                             saveProgress();
                              endBossFight();
                         }
                         break;
+                    }
+                }
+
+                // Mini-boss hit
+                if (miniBoss) {
+                    const miniRect = { x: miniBoss.x - miniBoss.size, y: miniBoss.y - miniBoss.size/2, width: miniBoss.size*2, height: miniBoss.size };
+                    if (isColliding(bulletRect, miniRect)) {
+                        bullets.splice(i, 1);
+                        miniBoss.health--;
+                        if (miniBoss.health <= 0) {
+                            playEnemyExplosionSound(); // Keep for mini-boss
+                            explosions.push({ x: miniBoss.x, y: miniBoss.y, radius: 0, alpha: 1 });
+                            credits += 30;
+                            saveProgress();
+                            miniBoss = null;
+                            bossHealthContainer.style.display = 'none';
+                            score += 300;
+                        }
                     }
                 }
             }
@@ -1702,73 +2058,9 @@
         function distance(x1, y1, x2, y2) {
             return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
         }
-
-        // --- Gemini API Call ---
-        async function getMissionBrief() {
-            generateMissionBtn.disabled = true;
-            generateMissionBtn.textContent = 'Generating...';
-            missionBriefContent.style.display = 'none';
-
-            const userQuery = "Generate a new mission brief for a space shooter game.";
-            const systemPrompt = "You are an AI mission control system for a futuristic space shooter game. Your role is to generate mission briefings. Provide a concise, single-paragraph briefing that is exciting and actionable for the player. The response must be a valid JSON object with `missionTitle`, `objective`, and `lore` fields. The objective should be a specific, simple task related to the game's mechanics, like 'Destroy 50 enemy ships'.";
-
-            const payload = {
-                contents: [{ parts: [{ text: userQuery }] }],
-                tools: [{ "google_search": {} }],
-                systemInstruction: {
-                    parts: [{ text: systemPrompt }]
-                },
-                generationConfig: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: "OBJECT",
-                        properties: {
-                            "missionTitle": { "type": "STRING" },
-                            "objective": { "type": "STRING" },
-                            "lore": { "type": "STRING" }
-                        },
-                        "propertyOrdering": ["missionTitle", "objective", "lore"]
-                    }
-                }
-            };
-            const apiKey = "";
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
-
-            try {
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const result = await response.json();
-                
-                const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (jsonText) {
-                    const mission = JSON.parse(jsonText);
-                    missionTitleDisplay.textContent = mission.missionTitle;
-                    missionObjectiveDisplay.textContent = mission.objective;
-                    missionLoreDisplay.textContent = mission.lore;
-                    missionBriefContent.style.display = 'block';
-                } else {
-                    console.error("API response did not contain valid content.");
-                    missionTitleDisplay.textContent = "Error";
-                    missionObjectiveDisplay.textContent = "Failed to generate mission.";
-                    missionLoreDisplay.textContent = "Please try again.";
-                    missionBriefContent.style.display = 'block';
-                }
-            } catch (error) {
-                console.error("Failed to fetch mission brief:", error);
-                missionTitleDisplay.textContent = "Error";
-                missionObjectiveDisplay.textContent = "Failed to generate mission.";
-                missionLoreDisplay.textContent = "Please check your internet connection and try again.";
-                missionBriefContent.style.display = 'block';
-            } finally {
-                generateMissionBtn.disabled = false;
-                generateMissionBtn.textContent = 'Generate Mission Brief';
-            }
-        }
         
         init();
     </script>
 </body>
 </html>
+
